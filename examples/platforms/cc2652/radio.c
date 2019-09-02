@@ -1225,6 +1225,7 @@ otError otPlatRadioEnable(otInstance *aInstance)
         otEXPECT_ACTION(rfCoreSendEnableCmd() == DONE_OK, error = OT_ERROR_FAILED);
 
         sState = cc2652_stateSleep;
+        error  = OT_ERROR_NONE;
     }
 
 exit:
@@ -1861,6 +1862,9 @@ static void cc2652RadioProcessTransmitDone(otInstance *  aInstance,
 
 static void cc2652RadioProcessReceiveDone(otInstance *aInstance, otRadioFrame *aReceiveFrame, otError aReceiveError)
 {
+    // TODO Set this flag only when the packet is really acknowledged with frame pending set.
+    // See https://github.com/openthread/openthread/pull/3785
+    aReceiveFrame->mInfo.mRxInfo.mAckedWithFramePending = true;
 #if OPENTHREAD_ENABLE_DIAG
 
     if (otPlatDiagModeGet())

@@ -263,7 +263,7 @@ void CoapBase::HandleRetransmissionTimer(Timer &aTimer)
 void CoapBase::HandleRetransmissionTimer(void)
 {
     uint32_t         now       = TimerMilli::GetNow();
-    uint32_t         nextDelta = 0xffffffff;
+    uint32_t         nextDelta = TimerMilli::kForeverDt;
     CoapMetadata     coapMetadata;
     Message *        message     = static_cast<Message *>(mPendingRequests.GetHead());
     Message *        nextMessage = NULL;
@@ -276,10 +276,11 @@ void CoapBase::HandleRetransmissionTimer(void)
 
         if (coapMetadata.IsLater(now))
         {
+            uint32_t diff = TimerMilli::Elapsed(now, coapMetadata.mNextTimerShot);
             // Calculate the next delay and choose the lowest.
-            if (coapMetadata.mNextTimerShot - now < nextDelta)
+            if (diff < nextDelta)
             {
-                nextDelta = coapMetadata.mNextTimerShot - now;
+                nextDelta = diff;
             }
         }
         else if ((coapMetadata.mConfirmable) && (coapMetadata.mRetransmissionCount < kMaxRetransmit))
@@ -316,7 +317,7 @@ void CoapBase::HandleRetransmissionTimer(void)
         message = nextMessage;
     }
 
-    if (nextDelta != 0xffffffff)
+    if (nextDelta != TimerMilli::kForeverDt)
     {
         mRetransmissionTimer.Start(nextDelta);
     }
@@ -732,9 +733,8 @@ otError ResponsesQueue::GetMatchedResponseCopy(const Message &         aRequest,
             continue;
         }
 
-        VerifyOrExit((*aResponse = message->Clone()) != NULL, error = OT_ERROR_NO_BUFS);
-
-        EnqueuedResponseHeader::RemoveFrom(**aResponse);
+        VerifyOrExit((*aResponse = message->Clone(message->GetLength() - sizeof(EnqueuedResponseHeader))) != NULL,
+                     error = OT_ERROR_NO_BUFS);
 
         error = OT_ERROR_NONE;
         break;
@@ -746,18 +746,21 @@ exit:
 
 void ResponsesQueue::EnqueueResponse(Message &aMessage, const Ip6::MessageInfo &aMessageInfo)
 {
-    Message *              copy;
+    otError                error          = OT_ERROR_NONE;
+    Message *              cachedResponse = NULL;
+    Message *              responseCopy   = NULL;
     EnqueuedResponseHeader enqueuedResponseHeader(aMessageInfo);
     uint16_t               messageCount;
     uint16_t               bufferCount;
 
-    switch (GetMatchedResponseCopy(aMessage, aMessageInfo, &copy))
+    switch (GetMatchedResponseCopy(aMessage, aMessageInfo, &cachedResponse))
     {
     case OT_ERROR_NOT_FOUND:
         break;
 
     case OT_ERROR_NONE:
-        copy->Free();
+        assert(cachedResponse != NULL);
+        cachedResponse->Free();
 
         // fall through
 
@@ -773,10 +776,10 @@ void ResponsesQueue::EnqueueResponse(Message &aMessage, const Ip6::MessageInfo &
         DequeueOldestResponse();
     }
 
-    VerifyOrExit((copy = aMessage.Clone()) != NULL);
+    VerifyOrExit((responseCopy = aMessage.Clone()) != NULL);
 
-    enqueuedResponseHeader.AppendTo(*copy);
-    mQueue.Enqueue(*copy);
+    SuccessOrExit(error = enqueuedResponseHeader.AppendTo(*responseCopy));
+    mQueue.Enqueue(*responseCopy);
 
     if (!mTimer.IsRunning())
     {
@@ -784,6 +787,12 @@ void ResponsesQueue::EnqueueResponse(Message &aMessage, const Ip6::MessageInfo &
     }
 
 exit:
+
+    if (error != OT_ERROR_NONE && responseCopy != NULL)
+    {
+        responseCopy->Free();
+    }
+
     return;
 }
 

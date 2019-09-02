@@ -398,26 +398,26 @@ public:
      *
      * @param[in]  aMessage  A reference to the message.
      *
-     * @returns The number of bytes read.
-     *
      */
-    uint16_t ReadFrom(Message &aMessage)
+    void ReadFrom(const Message &aMessage)
     {
-        return aMessage.Read(aMessage.GetLength() - sizeof(*this), sizeof(*this), this);
-    };
+        uint16_t length = aMessage.Read(aMessage.GetLength() - sizeof(*this), sizeof(*this), this);
+        assert(length == sizeof(*this));
+        OT_UNUSED_VARIABLE(length);
+    }
 
     /**
      * This method removes delayed response header from the message.
      *
      * @param[in]  aMessage  A reference to the message.
      *
-     * @retval OT_ERROR_NONE  Successfully removed the header.
-     *
      */
-    static otError RemoveFrom(Message &aMessage)
+    static void RemoveFrom(Message &aMessage)
     {
-        return aMessage.SetLength(aMessage.GetLength() - sizeof(DelayedResponseHeader));
-    };
+        otError error = aMessage.SetLength(aMessage.GetLength() - sizeof(DelayedResponseHeader));
+        assert(error == OT_ERROR_NONE);
+        OT_UNUSED_VARIABLE(error);
+    }
 
     /**
      * This method returns a time when the message shall be sent.
@@ -1072,6 +1072,16 @@ public:
      */
     void RegisterParentResponseStatsCallback(otThreadParentResponseCallback aCallback, void *aContext);
 
+    /**
+     * This method requests MLE layer to prepare and send a shorter version of Child ID Request message by only
+     * including the mesh-local IPv6 address in the Address Registration TLV.
+     *
+     * This method should be called when a previous MLE Child ID Request message would require fragmentation at 6LoWPAN
+     * layer.
+     *
+     */
+    void RequestShorterChildIdRequest(void);
+
 protected:
     /**
      * States during attach (when searching for a parent).
@@ -1103,6 +1113,17 @@ protected:
     enum
     {
         kMleMaxResponseDelay = 1000u, ///< Maximum delay before responding to a multicast request.
+    };
+
+    /**
+     * This enumeration type is used in `AppendAddressRegistration()` to determine which addresses to include in the
+     * appended Address Registration TLV.
+     *
+     */
+    enum AddressRegistrationMode
+    {
+        kAppendAllAddresses,  ///< Append all addresses (unicast/multicast) in Address Registration TLV.
+        kAppendMeshLocalOnly, ///< Only append the Mesh Local (ML-EID) address in Address Registration TLV.
     };
 
     /**
@@ -1323,12 +1344,13 @@ protected:
      * This method appends an Address Registration TLV to a message.
      *
      * @param[in]  aMessage  A reference to the message.
+     * @param[in]  aMode     Determines which addresses to include in the TLV (see `AddressRegistrationMode`).
      *
      * @retval OT_ERROR_NONE     Successfully appended the Address Registration TLV.
      * @retval OT_ERROR_NO_BUFS  Insufficient buffers available to append the Address Registration TLV.
      *
      */
-    otError AppendAddressRegistration(Message &aMessage);
+    otError AppendAddressRegistration(Message &aMessage, AddressRegistrationMode aMode = kAppendAllAddresses);
 
 #if OPENTHREAD_CONFIG_ENABLE_TIME_SYNC
     /**
@@ -1754,6 +1776,8 @@ private:
     ChildUpdateRequestState mChildUpdateRequestState;
     uint8_t                 mDataRequestAttempts;
     DataRequestState        mDataRequestState;
+
+    AddressRegistrationMode mAddressRegistrationMode;
 
     uint8_t       mParentLinkMargin;
     bool          mParentIsSingleton;
