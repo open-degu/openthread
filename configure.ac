@@ -974,11 +974,7 @@ AC_ARG_ENABLE(commissioner,
     ],
     [enable_commissioner=no])
 
-if test "$enable_commissioner" = "yes"; then
-    OPENTHREAD_ENABLE_COMMISSIONER=1
-else
-    OPENTHREAD_ENABLE_COMMISSIONER=0
-fi
+OPENTHREAD_ENABLE_COMMISSIONER=0
 
 AC_MSG_CHECKING([whether to enable the commissioner])
 AC_MSG_RESULT(${enable_commissioner})
